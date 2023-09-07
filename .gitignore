@@ -1,0 +1,6 @@
+plots/
+solution/
+.vscode/
+*.py
+mat.cpp
+wh_omega_v_iters.cpp
