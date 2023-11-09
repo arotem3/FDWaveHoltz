@@ -76,4 +76,36 @@ namespace waveholtz
         }
     }
 
+    void FDWaveEquation1D::operator()(double * ut, const double t, const double * u) const
+    {
+        const double one_over_h_squared = 1.0 / h / h;
+        const double two_over_h = 2.0 / h;
+
+        double * vt = ut + n;
+        const double * v = u + n;
+
+        // du/dt = v
+        #pragma omp simd
+        for (int i=0; i < n; ++i)
+            ut[i] = v[i];
+
+        #pragma omp simd
+        for (int i=1; i < n-1; ++i)
+        {
+            vt[i] = one_over_h_squared * (u[i-1] - 2.0*u[i] + u[i+1]);
+        }
+        
+        // left BC
+        vt[0] = 2.0 * one_over_h_squared * (u[1] - u[0]);
+        if (bc[0] == 'o')
+        {
+            vt[0] -= two_over_h * v[0];
+        }
+
+        vt[n-1] = 2.0 * one_over_h_squared * (u[n-2] - u[n-1]);
+        if (bc[1] == 'o')
+        {
+            vt[n-1] -= two_over_h * v[n-1];
+        }
+    }
 } // namespace waveholtz

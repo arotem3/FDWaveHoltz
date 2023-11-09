@@ -34,6 +34,20 @@ namespace waveholtz
         /// @param u (u, v) has dimension m x n x 2
         void operator()(double * ut, const double t, const double * u) const;
     };
+
+    class FDWaveEquation1D
+    {
+    private:
+        const std::string bc;
+
+    public:
+        const double h;
+        const int n;
+
+        FDWaveEquation1D(const int nx, const double dx, const char bc_[2]) : bc(bc_), h(dx), n(nx) {}
+
+        void operator()(double * ut, const double t, const double * u) const;
+    };
 } // namespace waveholtz
 
 #endif
