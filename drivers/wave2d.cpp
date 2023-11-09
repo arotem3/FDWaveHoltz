@@ -12,7 +12,7 @@
 #include "save_binary.hpp"
 #include "ProgressBar.hpp"
 
-using namespace waveholtz;
+using namespace wh;
 
 static inline double f(double x, double y)
 {
@@ -32,18 +32,18 @@ static inline double initial_velocity(double x, double y)
 
 int main()
 {
-    constexpr int save_solution = 10; // save solution to file every save_solution time steps. If save_solution == 0, then solutions will not be saved to file.
+    constexpr int save_solution = 20; // save solution to file every save_solution time steps. If save_solution == 0, then solutions will not be saved to file.
     const char solution_base_file_name[] = "solution/u"; // solutions will be of form: solution_base_file_name00i where i is the iteration padded with zeros, e.g. "solution/u0021"
     constexpr int zero_pad = 6;
 
     auto save = [=](MatrixWrapper<double>& x, int it) -> void
     {
-        if (save_solution && it % save_solution == 0)
+        if (save_solution && (it % save_solution == 0))
         {
             std::stringstream fname;
             fname << solution_base_file_name << std::setw(zero_pad) << std::setfill('0') << it;
 
-            save_binary(x.mat, x.n_cols * x.n_rows, fname.str());
+            save_binary(x, x.size(), fname.str());
         }
     };
 
@@ -57,11 +57,11 @@ int main()
         std::cout << "using " << omp_get_num_threads() << " threads\n";
     }
 
-    std::vector<double> w(ndof, 0.0);
-    MatrixWrapper<double> u(n, n, w.data());
-    MatrixWrapper<double> v(n, n, w.data() + n*n);
+    dvec w(ndof);
+    MatrixWrapper<double> u(w, n, n);
+    MatrixWrapper<double> v(w + n*n, n, n);
 
-    std::vector<double> x(n); // grid points
+    dvec x(n); // grid points
     #pragma omp parallel for
     for (int i=0; i < n; ++i)
         x[i] = a + i*h;
@@ -90,7 +90,8 @@ int main()
     boundary_conditions[2] = 'o'; // top
     boundary_conditions[3] = 'n'; // left
 
-    FDWaveEquation wave(n, n, h, boundary_conditions);
+    int dims[] = {n,n};
+    wave2d wave(dims, h, boundary_conditions);
 
     auto time_derivative = [&](double * p, double t, const double * y) -> void
     {
@@ -102,23 +103,30 @@ int main()
 
         #pragma omp parallel for
         for (int i=0; i < n*n; ++i)
-            vt[i] += s * F.mat[i];
+            vt[i] += s * F[i];
     };
 
     double dt = 2.5e-4;
-    const double T = 1.0;
+    const double T = 2.0;
     const int nt = std::ceil(T / dt);
     dt = T / nt;
 
     double t = 0.0;
     ode::RungeKutta2<double> rk(ndof);
 
+    std::cout << "n := " << n << "\n"
+              << "ndof := " << ndof << "\n"
+              << "h := " << h << "\n"
+              << "T := " << T << "\n"
+              << "dt := " << dt << "\n"
+              << "nt := " << nt << "\n";
+
     Timer stopwatch;
     ProgressBar progress_bar(nt);
 
     for (int it=1; it <= nt; ++it)
     {
-        rk.step(dt, time_derivative, t, w.data());
+        rk.step(dt, time_derivative, t, w);
 
         save(u, it);
 

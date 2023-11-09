@@ -2,6 +2,7 @@
 #include "Timer.hpp"
 #include "ProgressBar.hpp"
 #include "save_binary.hpp"
+#include "linalg.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -9,29 +10,13 @@
 
 #include <omp.h>
 
-using namespace waveholtz;
-
-inline double square(double x)
-{
-    return x * x;
-}
-
-double error(int n, double * x, double * y)
-{
-    double s = 0;
-
-    #pragma omp parallel for reduction(+:s)
-    for (int i=0; i < n; ++i)
-        s += square(x[i] - y[i]);
-    
-    return std::sqrt(s);
-}
+using namespace wh;
 
 int main()
 {
-    constexpr double K = 20.0;
-    constexpr double omega = 30 * M_PI;
-    constexpr double tol = 1e-5;
+    constexpr double K = 1.0;
+    constexpr double omega = 20;
+    constexpr double tol = 1e-7;
     constexpr int maxit = 1'000;
 
     #pragma omp parallel
@@ -48,17 +33,18 @@ int main()
 
     const int n = 2 * num_points_per_unit_length(omega, K);
     const double h = 2.0 / (n-1);
-    const double dt = 0.1 * h;
 
-    std::cout << "n := " << n << "\n";
+    std::cout << "omega := " << omega << "\n"
+              << "n := " << n << "\n"
+              << "h := " << h << "\n";
 
     // specify grid [-1, 1] x [-1, 1]
-    std::vector<double> x(n);
-    const std::vector<double>& y = x;
+    dvec x(n);
+    const dvec& y = x;
 
     #pragma omp parallel for
     for (int i=0; i < n; ++i)
-        x[i] = -1.0 * h*i;
+        x[i] = -1.0 + h*i;
 
     // compute source function F
     dmat F(n, n);
@@ -75,12 +61,13 @@ int main()
     boundary_conditions[3] = 'n'; // left
 
     // WaveHoltz iteration operator
-    WaveHoltz Pi(h, n, n, boundary_conditions);
+    int dims[] = {n,n};
+    waveholtz2d WH(omega, dims, h, boundary_conditions);
     const int ndof = 2 * n * n;
 
-    std::vector<double> w(ndof, 0.0);
-    std::vector<double> w_prev(ndof);
-    std::vector<double> pi0(ndof);
+    dvec w(ndof);
+    dvec w_prev(ndof);
+    dvec pi0(ndof);
 
     Timer stopwatch;
 
@@ -89,13 +76,9 @@ int main()
     // q_t = A q - F(x, y) cos(omega t),
     // q(0) = 0,
     // q_t(0) = 0.
-    Pi.pi0(pi0.data(), omega, F.mat, dt);
+    WH.pi0(pi0, F);
 
-    double pi_zero = 0; // ||pi_zero||
-    #pragma omp parallel for reduction(+:pi_zero)
-    for (int i=0; i < ndof; ++i)
-        pi_zero += square(pi0[i]);
-    pi_zero = std::sqrt(pi_zero);
+    double pi_zero = norm(ndof, pi0);
 
     std::cout << std::scientific << std::setprecision(2);
 
@@ -110,22 +93,23 @@ int main()
         // where:
         // q_t = A q
         // q(0) = w
-        Pi.S(w.data(), omega, dt);
+        WH.S(w);
 
         #pragma omp parallel for
         for (int i=0; i < ndof; ++i)
             w[i] += pi0[i];
 
-        double err = error(ndof, w.data(), w_prev.data());
+        double err = error(ndof, w, w_prev);
 
         std::cout << std::setw(10) << it << " / " << maxit << " || error =" << std::setw(10) << err / pi_zero << "\r" << std::flush;
 
         if (err < tol * pi_zero)
             break;
     }
+    WH.postprocess(w);
     std::cout << "\nComputation time: " << stopwatch.elapsed() << " seconds\n";
 
-    save_binary(w.data(), 2*n*n, "waveholtz_solution.dat");
+    save_binary(w, ndof, "solution/u");
 
     return 0;
 }

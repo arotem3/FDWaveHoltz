@@ -6,48 +6,49 @@
 
 #include <omp.h>
 
-#include "Matrix.hpp"
+#include "Tensor.hpp"
 
-namespace waveholtz
+namespace wh
 {
+    template <int Dim>
     class FDWaveEquation
     {
     private:
         const std::string bc;
+        int _n[Dim];
 
     public:
         const double h;
-        const int m;
-        const int n;
+        const int * const n = _n;
 
         /// @brief initialize wave equation
         /// @param nx number of grid points in x direction
         /// @param ny number of grid points in y direction
         /// @param dx grid spacing, same for x and y
         /// @param bc_ the boundary conditions in the order: bottom, right, top, left
-        /// (i.e. clockwise). Either 'n' for Neumann, or 'o' for outflow. 
-        FDWaveEquation(const int nx, const int ny, const double dx, const char bc_[4]) : bc(bc_), h(dx), m(nx), n(ny) {}
+        /// (i.e. clockwise). Either 'n' for Neumann, or 'o' for outflow.
+
+        /// @brief initialize wave equation
+        /// @param nx length Dim. Specifies number of grid points along each dimension.
+        /// @param dx uniform grid size
+        /// @param bc_ length 2*Dim. Specify the boundary conditions. In 1D: bc = {left bc, right bc}. In 2D: bc = {bottom, top, right, left}
+        FDWaveEquation(const int nx[], const double dx, const char bc_[]) : bc(bc_), h(dx)
+        {
+            for (int i=0; i < Dim; ++i)
+            {
+                _n[i] = nx[i];
+            }
+        }
 
         /// @brief evaluates the time derivative of the homogeneous wave equation du/dt = v, dv/dt = laplacian(u).
-        /// @param ut (du/dt, dv/dt) has dimension m x n x 2
+        /// @param ut (du/dt, dv/dt) has dimension n x 2
         /// @param t time (not used)
-        /// @param u (u, v) has dimension m x n x 2
+        /// @param u (u, v) has dimension n x 2
         void operator()(double * ut, const double t, const double * u) const;
     };
 
-    class FDWaveEquation1D
-    {
-    private:
-        const std::string bc;
-
-    public:
-        const double h;
-        const int n;
-
-        FDWaveEquation1D(const int nx, const double dx, const char bc_[2]) : bc(bc_), h(dx), n(nx) {}
-
-        void operator()(double * ut, const double t, const double * u) const;
-    };
-} // namespace waveholtz
+    typedef FDWaveEquation<1> wave1d;
+    typedef FDWaveEquation<2> wave2d;
+} // namespace wh
 
 #endif

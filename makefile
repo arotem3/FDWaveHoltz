@@ -1,5 +1,5 @@
 CXX ?= g++
-FLAGS = -Wall -fopenmp
+FLAGS = -Wall -fopenmp -std=c++20
 SRC_DIR = source/
 BUILD_DIR = build/
 SRC = ${wildcard $(SRC_DIR)*.cpp}

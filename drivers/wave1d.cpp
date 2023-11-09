@@ -1,6 +1,6 @@
 /* 
     In this file we solve:
-        u_{tt} = u_{xx} + f(x, t)
+        u_{tt} = u_{xx} - f(x, t)
 
     with boundary conditions either:
         Neumann: n.u_x = 0
@@ -23,7 +23,7 @@
 #include "save_binary.hpp"
 #include "ProgressBar.hpp"
 
-using namespace waveholtz;
+using namespace wh;
 
 static inline double f(double x, double t)
 {
@@ -91,7 +91,7 @@ int main()
     boundary_conditions[0] = 'n'; // bc @ x == a
     boundary_conditions[1] = 'o'; // bc @ x == b
 
-    FDWaveEquation1D wave(n, h, boundary_conditions);
+    wave1d wave(&n, h, boundary_conditions);
 
     auto time_derivative = [&](double * p, double t, const double * y) -> void
     {
@@ -102,7 +102,7 @@ int main()
         #pragma omp parallel for
         for (int i=0; i < n; ++i)
         {
-            vt[i] += f(x[i], t);
+            vt[i] -= f(x[i], t);
         }
     };
 
