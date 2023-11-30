@@ -49,6 +49,11 @@ namespace wh
                 v[i] /= -omega;
             }
         }
+    
+        const FDWaveEquation<Dim>& get_wave_op() const
+        {
+            return wave;
+        }
     };
 
     typedef WaveHoltz<1> waveholtz1d;

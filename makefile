@@ -10,6 +10,11 @@ DRIVERS_DIR = drivers/
 DRIVERS_SRC = ${wildcard $(DRIVERS_DIR)*.cpp}
 DRIVERS_OUT = ${patsubst %.cpp, %, $(DRIVERS_SRC)}
 
+PAPER_DIR = paper/
+PAPER_SRC = ${wildcard $(PAPER_DIR)*.cpp}
+PAPER_OUT = ${patsubst %.cpp, %, $(PAPER_SRC)}
+PAPER_LIBS = -larmadillo
+
 LIB = fdwh
 LIBF = lib$(LIB).a
 
@@ -25,9 +30,15 @@ build/%.o: %.cpp
 	$(CXX) $(FLAGS) -o $@ $< -c $(INCLUDE)
 
 drivers: $(DRIVERS_OUT)
+	@mkdir -p solution
+
+paper: $(PAPER_OUT)
 
 $(DRIVERS_DIR)%: $(DRIVERS_DIR)%.cpp $(LIBF)
 	$(CXX) $(FLAGS) -o $@ $< $(INCLUDE) -L. -l$(LIB)
+
+$(PAPER_DIR)%: $(PAPER_DIR)%.cpp $(LIBF)
+	$(CXX) $(FLAGS) -o $@ $< $(INCLUDE) $(PAPER_LIBS) -L. -l$(LIB)
 
 clean:
 	rm -rf build

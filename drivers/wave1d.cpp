@@ -66,22 +66,22 @@ int main()
         }
     };
 
-    constexpr int n = 250, ndof = 2 * n;
+    constexpr int n = 200, ndof = 2 * n;
     constexpr double a = -1., b = 1.;
     constexpr double h = (b - a) / (n - 1);
 
-    std::vector<double> w(ndof, 0.0);
-    double * u = w.data();
-    double * v = u + n;
+    dvec w(ndof);
+    dvec_wrapper u(w, n);
+    dvec_wrapper v(u+n, n);
 
-    std::vector<double> x(n);
+    dvec x(n);
     
     #pragma omp parallel for
     for (int i=0; i < n; ++i)
     {
-        x[i] = a + i*h;
-        u[i] = initial_displacement(x[i]);
-        v[i] = initial_velocity(x[i]);
+        x(i) = a + i*h;
+        u(i) = initial_displacement(x(i));
+        v(i) = initial_velocity(x(i));
     }
 
     save_binary(x.data(), n, "solution/x");
@@ -97,12 +97,12 @@ int main()
     {
         wave(p, t, y);
 
-        double * vt = p + n;
+        dvec_wrapper vt(p + n, n);
 
         #pragma omp parallel for
         for (int i=0; i < n; ++i)
         {
-            vt[i] -= f(x[i], t);
+            vt(i) -= f(x(i), t);
         }
     };
 

@@ -81,6 +81,12 @@ namespace wh
     }
 
     template <>
+    void FDWaveEquation<2>::as_matrix(double * a) const 
+    {
+        throw std::logic_error("FDWaveEquation<2>::as_matrix not yet implemented!");
+    }
+
+    template <>
     void FDWaveEquation<1>::operator()(double * ut, const double t, const double * u) const
     {
         const double one_over_h_squared = 1.0 / h / h;
@@ -114,5 +120,38 @@ namespace wh
         {
             vt[m-1] -= two_over_h * v[m-1];
         }
+    }
+
+    template <>
+    void FDWaveEquation<1>::as_matrix(double * a) const
+    {
+        const double one_over_h_squared = 1.0 / h / h;
+        const double two_over_h = 2.0 / h;
+
+        const int m = this->n[0];
+
+        auto A = reshape(a, m, 2, m, 2); // block structure
+        
+        for (int i=0; i < m; ++i)
+            A(i, 0, i, 1) = 1.0;
+        
+        for (int i=1; i < m-1; ++i)
+        {
+            A(i, 1, i-1, 0) =  one_over_h_squared;
+            A(i, 1, i,   0) = -2.0*one_over_h_squared;
+            A(i, 1, i+1, 0) =  one_over_h_squared;
+        }
+
+        int i = 0; // left BC
+        A(i, 1, i,   0) = -2.0*one_over_h_squared;
+        A(i, 1, i+1, 0) =  2.0*one_over_h_squared;
+        if (bc[0] == 'o')
+            A(i, 1, i, 1) = -two_over_h;
+
+        i = m-1; // right BC
+        A(i, 1, i-1, 0) =  2.0*one_over_h_squared;
+        A(i, 1, i,   0) = -2.0*one_over_h_squared;
+        if (bc[1] == 'o')
+            A(i, 1, i, 1) = -two_over_h;
     }
 } // namespace wh

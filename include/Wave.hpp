@@ -45,6 +45,8 @@ namespace wh
         /// @param t time (not used)
         /// @param u (u, v) has dimension n x 2
         void operator()(double * ut, const double t, const double * u) const;
+
+        void as_matrix(double * a) const;
     };
 
     typedef FDWaveEquation<1> wave1d;
