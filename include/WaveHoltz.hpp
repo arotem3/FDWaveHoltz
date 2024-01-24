@@ -2,12 +2,15 @@
 #define WAVEHOLTZ_HPP
 
 #include <cmath>
+#include <complex>
 
 #include "Wave.hpp"
 #include "ode.hpp"
 
 namespace wh
 {
+    using namespace std::complex_literals;
+
     template <int Dim>
     class WaveHoltz
     {
@@ -61,11 +64,30 @@ namespace wh
 
     // selects the number of discretization points needed to resolve the
     // Helmholtz problem with frequency omega one the unit interval [0, 1] using
-    // the rule of thumb: h^2 omega^3 == K == constant. By default K = 10.0
+    // the rule of thumb: h^2 omega^3 == K where K is a constant, and K = 10.0 by default.
     inline int num_points_per_unit_length(double omega, double K = 10.0)
     {
-        double h = std::sqrt(K / std::pow(omega, 3));
-        return std::ceil(1.0 / h) + 1;
+        return std::ceil(std::sqrt( std::pow(omega, 3) / K ));
+    }
+
+    // returns the scaled filter transfer function beta(z) = 1/pi int_0^{2pi} (cos(t)-1/4)exp(zt) dt
+    inline std::complex<double> filter_transfer_function(std::complex<double> z)
+    {
+        if (z == 0.0)
+        {
+            return -0.5;
+        }
+        else if (z == -1.0 || z == 1.0)
+        {
+            return 0;
+        }
+        else
+        {
+            std::complex<double> a = 3.0 * z * z - 1.0;
+            std::complex<double> b = std::exp(2 * M_PI * z) - 1.0;
+            std::complex<double> c = 4.0 * M_PI * z * (z * z + 1.0);
+            return a * b / c;
+        }
     }
 } // namespace wh
 

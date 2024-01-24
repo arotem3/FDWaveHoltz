@@ -5,3 +5,4 @@ build/
 libfdwh.a
 mat.cpp
 wh_omega_v_iters.cpp
+Make.user

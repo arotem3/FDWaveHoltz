@@ -14,9 +14,14 @@
 
 using namespace wh;
 
+static inline double square(double x)
+{
+    return x * x;
+}
+
 static inline double f(double x, double y)
 {
-    double r = x*x + y*y;
+    double r = square(x + 0.7) + square(y);
     return 100 * std::exp(-100*r);
 }
 
@@ -76,6 +81,7 @@ int main()
         }
     }
 
+    save_binary(x, n, "solution/x");
     save(u, 0); // save solution
 
     dmat F(n, n);

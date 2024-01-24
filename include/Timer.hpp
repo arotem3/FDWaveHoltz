@@ -17,6 +17,11 @@ class Timer
         auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(toc-tic);
         return dur.count() * 1e-9;
     }
+
+    void restart()
+    {
+        tic = std::chrono::high_resolution_clock::now();
+    }
 };
 
 #endif
