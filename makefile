@@ -55,3 +55,4 @@ clean:
 	rm -rf build
 	rm -f $(LIBF)
 	rm -f $(DRIVERS_OUT)
+	rm -f $(PAPER_OUT)

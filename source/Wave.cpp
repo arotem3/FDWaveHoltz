@@ -83,7 +83,24 @@ namespace wh
     template <>
     void FDWaveEquation<2>::as_matrix(double * a) const 
     {
-        throw std::logic_error("FDWaveEquation<2>::as_matrix not yet implemented!");
+        // lazy!
+
+        int ndof = 2 * _n[0] * _n[1];
+        dmat_wrapper A(a, ndof, ndof);
+
+        dvec x(ndof);
+        x.zeros();
+
+        const double t = 0.0;
+
+        for (int i=0; i < ndof; ++i)
+        {
+            x(i) = 1.0;
+
+            operator()(&A(0, i), t, x);
+
+            x(i) = 0.0;
+        }
     }
 
     template <>
