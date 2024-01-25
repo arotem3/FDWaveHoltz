@@ -21,13 +21,18 @@
     Some of this information is printed at runtime to track progress.
 */
 
+#include <complex>
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+
 #include "WaveHoltz.hpp"
 #include "linalg.hpp"
 #include "Timer.hpp"
 
-#include <armadillo>
-
 using namespace wh;
+
+typedef std::complex<double> zdbl;
 
 static void initial_condition(double& u, double& v, double x, double w)
 {
@@ -52,38 +57,111 @@ static dvec linspace(double a, double b, int n)
     return x;
 }
 
-// complex svd factorization for repeated solving linear systems
-struct factorization
+extern "C" void zgesvd_(char * jobu, char * jobvt, int * m, int * n, zdbl * a, int * lda, double * s, zdbl * u, int * ldu, zdbl * vt, int * ldvt, zdbl * work, int * lwork, double * rwork, int * info);
+extern "C" void zgemv_(const char *, const int *, const int *, const zdbl *, const zdbl *, const int *, const zdbl *, const int *, const zdbl *, zdbl *, const int *);
+
+class SingularValueDecomp
 {
-    arma::cx_mat U;
-    arma::cx_mat V;
-    arma::vec s;
+private:
+    int n;
+    dvec s;
+    Matrix<zdbl> U;
+    Matrix<zdbl> VH;
+    mutable std::vector<zdbl> work;
 
-    factorization(const arma::cx_mat& a)
+public:
+    // destroys the content of matrix a
+    SingularValueDecomp(Matrix<zdbl>& a)
+        : n(a.shape()[0]),
+          s(n),
+          U(n, n),
+          VH(n, n),
+          work(1)
     {
-        arma::svd(U, s, V, a);
-    }
+        char jobu = 'A';
+        char jobvt = 'A';
+        int lwork = -1;
+        std::vector<double> rwork(5 * n);
+        int info;
 
-    arma::cx_vec inv(const arma::vec& x)
-    {
-        arma::cx_vec y = U.t() * x;
-        y = y/s;
-        y = V * y;
-        return y;
-    }
+        zgesvd_(&jobu, &jobvt, &n, &n, a, &n, s, U, &n, VH, &n, work.data(), &lwork, rwork.data(), &info);
+        lwork = work[0].real();
+        work.resize(lwork);
 
-    arma::cx_vec inv(const double* x)
-    {
-        const int n = U.n_rows;
-        arma::vec X(const_cast<double*>(x), n, false, false);
-        return inv(X);
+        zgesvd_(&jobu, &jobvt, &n, &n, a, &n, s, U, &n, VH, &n, work.data(), &lwork, rwork.data(), &info);
     }
 
     double cond() const
     {
-        return s.front() / s.back();
+        return s(0) / s(n-1);
+    }
+
+    // x <- A \ b
+    void solve(Vec<zdbl>& x, const auto& b) const
+    {
+        if (work.size() < n)
+            work.resize(n);
+
+        for (int i=0; i < n; ++i)
+            work[i] = b[i];
+        
+        char trans = 'C';
+        zdbl zero = 0.0+0.0i;
+        zdbl one = 1.0+0.0i;
+        int n_ = n;
+        int ione = 1;
+
+        zgemv_(&trans, &n, &n, &one, U, &n, work.data(), &ione, &zero, x, &ione);
+
+        for (int i=0; i < n; ++i)
+            work[i] = x[i] / s[i];
+        
+        zgemv_(&trans, &n, &n, &one, VH, &n, work.data(), &ione, &zero, x, &ione);
     }
 };
+
+extern "C" void zgeevx_(char * balance, char * jobvl, char * jobvr, char * sense, int * n, zdbl * a, int * lda, zdbl * w, zdbl * vL, int * ldvl, zdbl * vR, int * ldvr, int * ilo, int * ihi, double * scale, double * abnrm, double * rconde, double * rcondv, zdbl * work, int * lwork, double * rwork, int * info);
+
+static std::pair<Vec<zdbl>, Matrix<zdbl>> eig(const dmat& a)
+{
+    using namespace std::complex_literals;
+
+    int n = a.shape()[0];
+
+    Matrix<zdbl> A(n, n);
+    for (int i=0; i < n*n; ++i)
+    {
+        A[i] = a[i];
+    }
+
+    Vec<zdbl> eigenvalues(n);
+    Matrix<zdbl> eigenvectors(n, n);
+
+    char balance = 'B';
+    char jobvl = 'V';
+    char jobvr = 'V';
+    char sense = 'B';
+    Matrix<zdbl> vl(n, n);
+    int ilo, ihi;
+    dvec s(n);
+    double abnrm;
+    dvec rconde(n);
+    dvec rcondv(n);
+    std::vector<zdbl> work(1);
+    dvec rwork(2*n);
+    int lwork = -1;
+    
+    int info;
+    // query workspace
+    zgeevx_(&balance, &jobvl, &jobvr, &sense, &n, A, &n, eigenvalues, vl, &n, eigenvectors, &n, &ilo, &ihi, s, &abnrm, rconde, rcondv, work.data(), &lwork, rwork, &info);
+    // alloc work
+    lwork = work[0].real();
+    work.resize(lwork);
+    // compute eigenvalues and eigenvectors
+    zgeevx_(&balance, &jobvl, &jobvr, &sense, &n, A, &n, eigenvalues, vl, &n, eigenvectors, &n, &ilo, &ihi, s, &abnrm, rconde, rcondv, work.data(), &lwork, rwork, &info);
+
+    return make_pair(std::move(eigenvalues), std::move(eigenvectors));
+}
 
 // maintain an average value for a sequence
 struct running_avg
@@ -114,6 +192,12 @@ int main()
     const int n_iter = 1000;
 
     std::cout << std::fixed << std::setprecision(4);
+    
+    #pragma omp parallel
+    {
+        #pragma omp single
+        std::cout << "using " << omp_get_num_threads() << " threads." << std::endl;
+    }
 
     std::ofstream out("solution/convergence_rate1d.txt");
     out << std::setprecision(10);
@@ -133,22 +217,24 @@ int main()
         const char bc[] = "no";
         waveholtz1d WH(omega, &n, h, bc);
 
-        arma::mat A(2*n, 2*n);
-        WH.get_wave_op().as_matrix( A.memptr() );
-        arma::cx_vec eigvals;
-        arma::cx_mat R;
-        arma::eig_gen(eigvals, R, A, "balance");
+        dmat A(2*n, 2*n);
+        WH.get_wave_op().as_matrix(A);
+        auto [eigvals, R] = eig(A);
 
-        arma::cx_vec beta = eigvals / omega;
-        beta.transform(filter_transfer_function);
-        const double max_beta = arma::abs(beta).max();
+        double max_beta = 0, min_distance = std::numeric_limits<double>::infinity();
+        for (int i=0; i < 2*n; ++i)
+        {
+            zdbl z = eigvals(i) / omega;
 
-        eigvals /= omega;
-        arma::vec parabolic_distance = -arma::real(eigvals) + alpha * arma::square(arma::imag(eigvals) - 1.0);
-        const double min_distance = parabolic_distance.min();
+            const double beta = std::abs( filter_transfer_function(z) );
+            max_beta = std::max(beta, max_beta);
+
+            const double dist = -z.real() + alpha * square(z.imag() - 1.0);
+            min_distance = std::min(dist, min_distance);
+        }
 
         // pre-factor R
-        factorization svd(R);
+        SingularValueDecomp svd(R);
         const double kappa = svd.cond();
 
         dmat U(n, 2);
@@ -157,16 +243,17 @@ int main()
             initial_condition(U(i, 0), U(i, 1), x(i), omega);
         }
 
-        arma::cx_vec mu = svd.inv(U);
+        Vec<zdbl> mu(2*n);
+        svd.solve(mu, U);
 
         const double e0 = norm(U);
-        const double mu0 = arma::norm(mu);
+        const double mu0 = norm(mu);
 
         WH.S(U);
-        mu = svd.inv(U);
+        svd.solve(mu, U);
 
         const double e1 = norm(U);
-        const double mu1 = arma::norm(mu);
+        const double mu1 = norm(mu);
 
         const bool save_iters = (int)w % 10 == 0;
 
@@ -188,8 +275,8 @@ int main()
             WH.S(U);
             const double ek = norm(U);
             
-            mu = svd.inv(U);
-            const double muk = arma::norm(mu);
+            svd.solve(mu, U);
+            const double muk = norm(mu);
 
             if (save_iters)
             {
@@ -209,7 +296,7 @@ int main()
         }
 
         std::cout << "omega = " << w << " pi | n = " << std::setw(5) << n << " | rate estimate (" << std::setw(8) << 1-min_distance << ") >= max beta (" << std::setw(8) << max_beta << ") >= mu1/mu0 (" << std::setw(8) << mu1 / mu0 << ") | e1 / e0 = " << std::setw(8) << e1 / e0 << " | computation time = " << std::setw(10) << stopwatch.elapsed() << " seconds" << "\n";
-        out << w << ", " << e1 / e0 << ", " << mu1 / mu0 << ", " << min_distance << ", " << kappa << ",  " << r_e.value << ", " << r_mu.value << ", " << max_beta << "\n";
+        out << w << ", " << e1 / e0 << ", " << mu1 / mu0 << ", " << min_distance << ", " << kappa << ",  " << r_e.value << ", " << r_mu.value << ", " << max_beta << std::endl;
     }
 
     return 0;

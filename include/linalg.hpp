@@ -4,21 +4,29 @@
 #include <omp.h>
 
 #include <cmath>
+#include <complex>
 
 #include "Tensor.hpp"
 
 namespace wh
 {
-    inline double square(double x)
+    inline auto square(auto x)
     {
         return x * x;
     }
 
     // Euclidean norm of x which has length n.
     double norm(int n, const double * x);
+    double norm(int n, const std::complex<double> * x);
 
     template <int Dim>
     inline double norm(const TensorWrapper<Dim, double>& x)
+    {
+        return norm(x.size(), x);
+    }
+
+    template <int Dim>
+    inline double norm(const TensorWrapper<Dim, std::complex<double>>& x)
     {
         return norm(x.size(), x);
     }

@@ -13,7 +13,7 @@ plt.rcParams['font.size'] = 20
 fig, ax = plt.subplots(1,1, figsize=(12,8))
 
 n = np.arange(1, 1000+1)
-for k, w in enumerate([10,20,30]):
+for k, w in enumerate([10, 20, 30]):
     X = pd.read_csv(f"solution/iters{w}.txt")
 
     ax.semilogy(n, X['e'], '-', c=f"C{k}", label=r'$\frac{\| e_h^{(n)} \| }{\| e_h^{(0)} \| } (\omega = %d \pi)$'%w)
