@@ -1,0 +1,3 @@
+[submodule "LinSolve"]
+	path = LinSolve
+	url = https://github.com/arotem3/LinSolve.git
