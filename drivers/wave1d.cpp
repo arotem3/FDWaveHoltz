@@ -27,7 +27,7 @@ using namespace wh;
 
 static inline double f(double x, double t)
 {
-    return 100 * std::exp(-100*x*x) * std::cos(30 * t);
+    return 400 * std::exp(-400*x*x) * std::cos(30 * M_PI * t);
 }
 
 static inline double initial_displacement(double x)
@@ -66,7 +66,7 @@ int main()
         }
     };
 
-    constexpr int n = 200, ndof = 2 * n;
+    constexpr int n = 400, ndof = 2 * n;
     constexpr double a = -1., b = 1.;
     constexpr double h = (b - a) / (n - 1);
 
@@ -107,7 +107,7 @@ int main()
     };
 
     double dt = 2.5e-4;
-    double T = 2.0;
+    double T = 10.0;
     const int nt = std::ceil(T/dt);
     dt = T / nt;
 

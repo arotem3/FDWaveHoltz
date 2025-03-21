@@ -21,8 +21,8 @@ static inline double square(double x)
 
 static inline double f(double x, double y)
 {
-    double r = square(x + 0.7) + square(y);
-    return 100 * std::exp(-100*r);
+    double r = square(x+0.7) + square(y+0.7);
+    return 400 * std::exp(-400*r);
 }
 
 static inline double initial_value(double x, double y)
@@ -48,11 +48,11 @@ int main()
             std::stringstream fname;
             fname << solution_base_file_name << std::setw(zero_pad) << std::setfill('0') << it;
 
-            save_binary(x, x.size(), fname.str());
+            save_binary(x.data(), x.size(), fname.str());
         }
     };
 
-    constexpr int n = 250, ndof = 2 * n * n;
+    constexpr int n = 500, ndof = 2 * n * n;
     constexpr double a = -1., b = 1.;
     constexpr double h = (b - a) / (n - 1);
 
@@ -81,7 +81,7 @@ int main()
         }
     }
 
-    save_binary(x, n, "solution/x");
+    save_binary(x.data(), n, "solution/x");
     save(u, 0); // save solution
 
     dmat F(n, n);
@@ -91,10 +91,10 @@ int main()
             F(i, j) = f(x[i], x[j]);
 
     char boundary_conditions[4];
-    boundary_conditions[0] = 'n'; // bottom
+    boundary_conditions[0] = 'o'; // bottom
     boundary_conditions[1] = 'o'; // right
     boundary_conditions[2] = 'o'; // top
-    boundary_conditions[3] = 'n'; // left
+    boundary_conditions[3] = 'o'; // left
 
     int dims[] = {n,n};
     wave2d wave(dims, h, boundary_conditions);
@@ -104,7 +104,7 @@ int main()
         wave(p, t, y); // du/dt = v, dv/dt = laplacian(u)
 
         // add forcing
-        const double s = std::sin(30*t);
+        const double s = std::sin(40*t);
         double * vt = p + n*n;
 
         #pragma omp parallel for
@@ -113,7 +113,7 @@ int main()
     };
 
     double dt = 2.5e-4;
-    const double T = 2.0;
+    const double T = 10.0;
     const int nt = std::ceil(T / dt);
     dt = T / nt;
 

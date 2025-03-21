@@ -14,9 +14,9 @@ using namespace wh;
 
 int main()
 {
-    constexpr double K = 1.0;
-    constexpr double omega = 20;
-    constexpr double tol = 1e-7;
+    constexpr double K = 10.0;
+    constexpr double omega = 20 * M_PI;
+    constexpr double tol = 1e-6;
     constexpr int maxit = 1'000;
 
     #pragma omp parallel
@@ -27,8 +27,9 @@ int main()
 
     auto f = [omega](double x, double y) -> double
     {
-        double r = square(omega * (x + 0.7)) + square(omega * (y+0.1));
-        return square(omega) * std::exp(-r);
+        const double s = square(omega);
+        const double r = square(x + 0.7) + square(y + 0.1);
+        return s / M_PI * std::exp(-s * r);
     };
 
     const int n = 2 * num_points_per_unit_length(omega, K);
@@ -109,7 +110,7 @@ int main()
     WH.postprocess(w);
     std::cout << "\nComputation time: " << stopwatch.elapsed() << " seconds\n";
 
-    save_binary(w, ndof, "solution/u");
+    save_binary(w.data(), ndof, "solution/u");
 
     return 0;
 }

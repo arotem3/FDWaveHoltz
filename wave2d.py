@@ -6,8 +6,8 @@ n = len(x)
 
 fig, axes = plt.subplots(4, 4, figsize=(8,8))
 
-nt = 8000
-skip = 10
+nt = 40000
+skip = 20
 
 K = (nt * skip // 16) // skip
 for i in range(4):

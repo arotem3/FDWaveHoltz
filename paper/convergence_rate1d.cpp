@@ -30,6 +30,8 @@
 #include "linalg.hpp"
 #include "Timer.hpp"
 
+#include "linsolve.hpp"
+
 using namespace wh;
 
 typedef std::complex<double> zdbl;
@@ -99,7 +101,7 @@ public:
     // x <- A \ b
     void solve(Vec<zdbl>& x, const auto& b) const
     {
-        if (work.size() < n)
+        if ((int)work.size() < n)
             work.resize(n);
 
         for (int i=0; i < n; ++i)
@@ -108,7 +110,6 @@ public:
         char trans = 'C';
         zdbl zero = 0.0+0.0i;
         zdbl one = 1.0+0.0i;
-        int n_ = n;
         int ione = 1;
 
         zgemv_(&trans, &n, &n, &one, U, &n, work.data(), &ione, &zero, x, &ione);
@@ -205,6 +206,7 @@ int main()
 
     std::ofstream iter_out;
 
+    /* Sweep over omega values. For each omega, we perform the fixed point iteration. */
     for (double w = omega_start; w <= omega_end; w += omega_delta)
     {
         Timer stopwatch;
@@ -288,14 +290,56 @@ int main()
 
             e_prev = ek;
             mu_prev = muk;
+
+            std::cout << std::setw(10) << k << " | " << std::setw(10) << std::scientific << std::setprecision(2) << ek / e0 << "\r" << std::flush;
+
+            if (ek / e0 < 1e-10)
+                break;
         }
+        std::cout << std::endl;
 
         if (save_iters)
         {
             iter_out.close();
         }
 
-        std::cout << "omega = " << w << " pi | n = " << std::setw(5) << n << " | rate estimate (" << std::setw(8) << 1-min_distance << ") >= max beta (" << std::setw(8) << max_beta << ") >= mu1/mu0 (" << std::setw(8) << mu1 / mu0 << ") | e1 / e0 = " << std::setw(8) << e1 / e0 << " | computation time = " << std::setw(10) << stopwatch.elapsed() << " seconds" << "\n";
+        // now gmres
+        auto IminusS = [&](const double * x, double * y)
+        {
+            #pragma omp parallel for
+            for (int i=0; i < 2*n; ++i)
+            {
+                y[i] = x[i];
+            }
+
+            WH.S(y);
+
+            #pragma omp parallel for
+            for (int i=0; i < 2*n; ++i)
+            {
+                y[i] = x[i] - y[i];
+            }
+        };
+
+        dmat b(n, 2); // right hand side
+        dvec work(2*n);
+        for (int i=0; i < n; ++i)
+        {
+            initial_condition(work(i), work(i+n), x(i), omega);
+            U(i, 0) = 0.0;
+            U(i, 1) = 0.0;
+        }
+
+        IminusS(work.data(), b.data()); // b = (I - S) * u0
+
+        linsol::gmres_options<double> options;
+        options.absolute_tolerance = 1e-10;
+        options.relative_tolerance = 1e-10;
+        options.verbose = 1;
+        options.restart = 50;
+        linsol::SolverResult gmres_out = linsol::gmres(2*n, U.data(), IminusS, b.data(), options);
+
+        std::cout << std::fixed << std::setprecision(2) << "omega = " << w << " pi | n = " << std::setw(5) << n << " | rate estimate (" << std::setw(8) << 1-min_distance << ") >= max beta (" << std::setw(8) << max_beta << ") >= mu1/mu0 (" << std::setw(8) << mu1 / mu0 << ") | e1 / e0 = " << std::setw(8) << e1 / e0 << " | computation time = " << std::setw(10) << stopwatch.elapsed() << " seconds" << "\n";
         out << w << ", " << e1 / e0 << ", " << mu1 / mu0 << ", " << min_distance << ", " << kappa << ",  " << r_e.value << ", " << r_mu.value << ", " << max_beta << std::endl;
     }
 

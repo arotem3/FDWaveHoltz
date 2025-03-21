@@ -97,8 +97,8 @@ int main()
     WH.postprocess(w);
     std::cout << "\nComputation time: " << stopwatch.elapsed() << " seconds\n";
 
-    save_binary(x, n, "solution/x");
-    save_binary(w, ndof, "solution/u");
+    save_binary(x.data(), n, "solution/x");
+    save_binary(w.data(), ndof, "solution/u");
 
     return 0;
 }
