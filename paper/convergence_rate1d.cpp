@@ -164,25 +164,6 @@ static std::pair<Vec<zdbl>, Matrix<zdbl>> eig(const dmat& a)
     return make_pair(std::move(eigenvalues), std::move(eigenvectors));
 }
 
-// maintain an average value for a sequence
-struct running_avg
-{
-    int n;
-    double value;
-
-    running_avg() : n(0), value(0) {}
-
-    // updates the average value and returns it
-    double update(double x)
-    {
-        double a = 1.0 / double(n+1);
-        double b = double(n) * a;
-        value = a * x + b * value;
-        n++;
-        return value;
-    }
-};
-
 int main()
 {
     constexpr double alpha = (2.0 * M_PI * M_PI - 3.0) / (12.0 * M_PI);
@@ -190,6 +171,7 @@ int main()
     const double omega_start = 10, omega_end = 30, omega_delta = 0.5;
     const double a = 0.0, b = 2.0;
 
+    const double tol = 1e-8;
     const int n_iter = 1000;
 
     std::cout << std::fixed << std::setprecision(4);
@@ -202,7 +184,7 @@ int main()
 
     std::ofstream out("solution/convergence_rate1d.txt");
     out << std::setprecision(10);
-    out << "omega,e,mu,min parabolic distance,kappa,avg rate (e),avg rate (mu),max beta\n";
+    out << "omega,min parabolic distance,kappa,max beta,rho estimate,FP#,GMRES#\n";
 
     std::ofstream iter_out;
 
@@ -239,71 +221,7 @@ int main()
         SingularValueDecomp svd(R);
         const double kappa = svd.cond();
 
-        dmat U(n, 2);
-        for (int i=0; i < n; ++i)
-        {
-            initial_condition(U(i, 0), U(i, 1), x(i), omega);
-        }
-
-        Vec<zdbl> mu(2*n);
-        svd.solve(mu, U);
-
-        const double e0 = norm(U);
-        const double mu0 = norm(mu);
-
-        WH.S(U);
-        svd.solve(mu, U);
-
-        const double e1 = norm(U);
-        const double mu1 = norm(mu);
-
-        const bool save_iters = (int)w % 10 == 0;
-
-        if (save_iters)
-        {
-            iter_out.open("solution/iters" + std::to_string((int)w) + ".txt");
-            iter_out << std::setprecision(10);
-            iter_out << "e,mu\n" << e1/e0 << "," << mu1/mu0 << std::endl;
-        }
-
-        running_avg r_e, r_mu;
-        r_e.update(e1 / e0);
-        r_mu.update(mu1 / mu0);
-
-        double e_prev = e1;
-        double mu_prev = mu1;
-        for (int k = 2; k <= n_iter; ++k)
-        {
-            WH.S(U);
-            const double ek = norm(U);
-            
-            svd.solve(mu, U);
-            const double muk = norm(mu);
-
-            if (save_iters)
-            {
-                iter_out << ek/e0 << "," << muk/mu0 << std::endl;
-            }
-
-            r_e.update(ek / e_prev);
-            r_mu.update(muk / mu_prev);
-
-            e_prev = ek;
-            mu_prev = muk;
-
-            std::cout << std::setw(10) << k << " | " << std::setw(10) << std::scientific << std::setprecision(2) << ek / e0 << "\r" << std::flush;
-
-            if (ek / e0 < 1e-10)
-                break;
-        }
-        std::cout << std::endl;
-
-        if (save_iters)
-        {
-            iter_out.close();
-        }
-
-        // now gmres
+        // set up iteration
         auto IminusS = [&](const double * x, double * y)
         {
             #pragma omp parallel for
@@ -321,26 +239,110 @@ int main()
             }
         };
 
-        dmat b(n, 2); // right hand side
-        dvec work(2*n);
+        dmat U(n, 2);
         for (int i=0; i < n; ++i)
         {
-            initial_condition(work(i), work(i+n), x(i), omega);
+            initial_condition(U(i, 0), U(i, 1), x(i), omega);
+        }
+
+        Vec<zdbl> mu(2*n);
+        svd.solve(mu, U);
+
+        const double e0 = norm(U);
+        const double mu0 = norm(mu);
+
+        WH.S(U);
+        svd.solve(mu, U);
+
+        double ek = norm(U);
+        double muk = norm(mu);
+
+        const bool save_iters = (int)w % 10 == 0;
+
+        if (save_iters)
+        {
+            iter_out.open("solution/iters" + std::to_string((int)w) + ".txt");
+            iter_out << std::setprecision(10);
+            iter_out << "e,mu\n" << ek/e0 << "," << muk/mu0 << std::endl;
+        }
+
+        int k = 2;
+        for (; k <= n_iter; ++k)
+        {
+            WH.S(U);
+            ek = norm(U);
+            
+            svd.solve(mu, U);
+            muk = norm(mu);
+
+            if (save_iters)
+            {
+                iter_out << ek/e0 << "," << muk/mu0 << std::endl;
+            }
+
+            // double rho_estimate = std::pow(ek / e0, 1.0 / k);
+            // std::cout << std::setw(10) << k << " | ||eᵏ||/||e⁰|| = " << std::setw(10) << std::scientific << std::setprecision(2) << ek / e0 << " | ρ ≈ " << rho_estimate << "\r" << std::flush;
+
+            if (ek / e0 < tol)
+                break;
+        }
+        // std::cout << std::endl;
+
+        double rho = std::pow(ek / e0, 1.0 / k); // estimate of the spectral radius of S
+
+        if (save_iters)
+        {
+            iter_out.close();
+        }
+        
+        // now gmres
+        dmat b(n, 2); // right hand side
+
+        for (int i = 0; i < n; ++i)
+        {
+            initial_condition(U(i, 0), U(i, 1), x(i), omega);
+        }
+
+        IminusS(U.data(), b.data()); // b = (I - S) * u0
+    
+        for (int i=0; i < n; ++i)
+        {
             U(i, 0) = 0.0;
             U(i, 1) = 0.0;
         }
 
-        IminusS(work.data(), b.data()); // b = (I - S) * u0
-
         linsol::gmres_options<double> options;
-        options.absolute_tolerance = 1e-10;
-        options.relative_tolerance = 1e-10;
-        options.verbose = 1;
-        options.restart = 50;
+        options.absolute_tolerance = 1e-12;
+        options.relative_tolerance = tol;
+        options.verbose = 0;
+        options.restart = 200;
+        options.maximum_iterations = 100;
         linsol::SolverResult gmres_out = linsol::gmres(2*n, U.data(), IminusS, b.data(), options);
 
-        std::cout << std::fixed << std::setprecision(2) << "omega = " << w << " pi | n = " << std::setw(5) << n << " | rate estimate (" << std::setw(8) << 1-min_distance << ") >= max beta (" << std::setw(8) << max_beta << ") >= mu1/mu0 (" << std::setw(8) << mu1 / mu0 << ") | e1 / e0 = " << std::setw(8) << e1 / e0 << " | computation time = " << std::setw(10) << stopwatch.elapsed() << " seconds" << "\n";
-        out << w << ", " << e1 / e0 << ", " << mu1 / mu0 << ", " << min_distance << ", " << kappa << ",  " << r_e.value << ", " << r_mu.value << ", " << max_beta << std::endl;
+        if (save_iters)
+        {
+            iter_out.open("solution/iters" + std::to_string((int)w) + "_gmres.txt");
+            iter_out << std::setprecision(10);
+            for (double r : gmres_out.residual_norm)
+            {
+                iter_out << r << std::endl;
+            }
+            iter_out.close();
+        }
+
+        std::cout << std::boolalpha << std::fixed << std::setprecision(2)
+            << "ω = " << w << "π:\n"
+            << "\tn = " << n << "\n"
+            << "\t1-ε = " << 1 - min_distance << " ≥ ρ = " << max_beta << " (estimate = " << rho << ")\n"
+            << std::scientific << std::setprecision(2)
+            << "\tκ(R) = " << kappa << "\n"
+            << "\tfixed point # iterations = " << k << "\n"
+            << "\tgmres # iterations = " << gmres_out.num_iter << " (" << gmres_out.num_matvec << ")\n"
+            << "\tgmres converged = " << (gmres_out.flag == 0) << "\n"
+            << std::fixed << std::setprecision(2)
+            << "\tcomputation time = " << stopwatch.elapsed() << " seconds\n"
+            << "--------------------------------------------------\n";
+        out << w << "," << min_distance << "," << kappa << "," << max_beta << "," << rho << "," << k << "," << gmres_out.num_matvec << "\n";
     }
 
     return 0;
